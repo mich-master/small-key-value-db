@@ -45,17 +45,24 @@ impl DbData {
         }
     }
     pub fn dump(&self, filepath: &str) -> Result<(),()> {
-        if let Ok(mut dbmap) = self.db.lock() {
-            if dbmap.modified {
-                file_dump(&dbmap.data, filepath)
-                    .map(|_| dbmap.modified = false )
-                    .map_err(|_|())
+        let result: Result<Option<String>,()> =
+            if let Ok(mut dbmap) = self.db.lock() {
+                if dbmap.modified {
+                    serde_json::to_string_pretty(&dbmap.data)
+                        .map(|s| { dbmap.modified = false; Some(s) } )
+                        .map_err(|_|())
+                } else {
+                    Ok(None)
+                }
             } else {
-                Ok(())
-            }
-        } else {
-            Result::Err(())
-        }
+                Result::Err(())
+            };
+        result.map(|opt_s| {
+            if let Some(s) = opt_s {
+                file_dump(s, filepath).unwrap();
+            };
+            ()
+        })
     }
     pub fn insert(&self, key: String, value: String) -> Result<(),DbError> {
         let db_result: Result<(),DbError> =
@@ -188,8 +195,6 @@ fn file_load(filepath: &str) -> Result<HashMap<String,String>,std::io::Error> {
     })
 }
 
-fn file_dump(dbmap: &HashMap<String,String>, filepath: &str) -> Result<(),std::io::Error> {
-    serde_json::to_string_pretty(dbmap).map_err(|e|e.into()).and_then(|json| {
-        std::fs::write(filepath, json)
-    })
+fn file_dump(dump: String, filepath: &str) -> Result<(),std::io::Error> {
+    std::fs::write(filepath, dump)
 }
